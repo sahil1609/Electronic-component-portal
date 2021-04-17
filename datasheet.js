@@ -1,52 +1,51 @@
-const mongoose = require('mongoose')
-const marked = require('marked')
-const slugify = require('slugify')
-const createDomPurifier = require('dompurify')
-const { JSDOM } = require('jsdom')
-const dompurify = createDomPurifier(new JSDOM().window)
+const express = require('express')
+const Datasheet = require('./../models/datasheet')
+const router = express.Router()
 
-//for the database
-const newsSchema = new mongoose.Schema({
-    title:{
-        type: String,
-        required: true
-    },
-    author:{
-        type: String,
-        required: true
-    },
-    description:{
-        type: String
-    },
-    markdown:{
-        type: String,
-        required: true
-    },
-    createdAt:{
-        type: Date,
-        default: Date.now
-    },
-    slug: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    sanitizedHtml: {
-        type: String,
-        required: true
-    }
-})
-newsSchema.pre('validate', function(next) {
-    if (this.title) {
-        this.slug = slugify(this.title, { 
-            lower:true, strict:true 
-        })
-    }
-    if (this.markdown) {
-        this.sanitizedHtml = dompurify.sanitize(marked(this.markdown))
-    }
-    next()
+router.get('/new', (req, res) => {
+  res.render('datasheet/new', { datasheet: new Datasheet() })
 })
 
-//News is the table
-module.exports= mongoose.model('Datasheet', newsSchema)
+router.get('/edit/:id', async (req, res) => {
+  const datasheet = await Datasheet.findById(req.params.id)
+  res.render('datasheet/edit', { datasheet: datasheet })
+})
+
+router.get('/:slug', async (req, res) => {
+  const datasheet = await Datasheet.findOne({ slug: req.params.slug })
+  if (datasheet == null) res.redirect('/')
+  res.render('datasheet/show', { datasheet: datasheet })
+})
+
+router.post('/', async (req, res, next) => {
+  req.datasheet = new Datasheet()
+  next()
+}, saveArticleAndRedirect('new'))
+
+router.put('/:id', async (req, res, next) => {
+  req.datasheet = await Datasheet.findById(req.params.id)
+  next()
+}, saveArticleAndRedirect('edit'))
+
+router.delete('/:id', async (req, res) => {
+  await Datasheet.findByIdAndDelete(req.params.id)
+  res.redirect('/datasheet')
+})
+
+function saveArticleAndRedirect(path) {
+  return async (req, res) => {
+    let datasheet = req.datasheet
+    datasheet.title = req.body.title
+    datasheet.author = req.body.author
+    datasheet.description = req.body.description
+    datasheet.markdown = req.body.markdown
+    try {
+      datasheet = await datasheet.save()
+      res.redirect(`/datasheet/${datasheet.slug}`)
+    } catch (e) {
+      res.render(`datasheet/${path}`, { datasheet: datasheet })
+    }
+  }
+}
+
+module.exports = router

@@ -1,52 +1,51 @@
-const mongoose = require('mongoose')
-const marked = require('marked')
-const slugify = require('slugify')
-const createDomPurifier = require('dompurify')
-const { JSDOM } = require('jsdom')
-const dompurify = createDomPurifier(new JSDOM().window)
+const express = require('express')
+const Project = require('../models/project')
+const router = express.Router()
 
-//for the database
-const paperSchema = new mongoose.Schema({
-    title:{
-        type: String,
-        required: true
-    },
-    author:{
-        type: String,
-        required: true
-    },
-    description:{
-        type: String
-    },
-    markdown:{
-        type: String,
-        required: true
-    },
-    createdAt:{
-        type: Date,
-        default: Date.now
-    },
-    slug: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    sanitizedHtml: {
-        type: String,
-        required: true
-    }
-})
-paperSchema.pre('validate', function(next) {
-    if (this.title) {
-        this.slug = slugify(this.title, { 
-            lower:true, strict:true 
-        })
-    }
-    if (this.markdown) {
-        this.sanitizedHtml = dompurify.sanitize(marked(this.markdown))
-    }
-    next()
+router.get('/new', (req, res) => {
+  res.render('project/new', { project: new Project() })
 })
 
-//Paper is the table
-module.exports= mongoose.model('Project', paperSchema)
+router.get('/edit/:id', async (req, res) => {
+  const project = await Project.findById(req.params.id)
+  res.render('project/edit', { project: project })
+})
+
+router.get('/:slug', async (req, res) => {
+  const project = await Project.findOne({ slug: req.params.slug })
+  if (project == null) res.redirect('/')
+  res.render('project/show', { project: project })
+})
+
+router.post('/', async (req, res, next) => {
+  req.project = new Project()
+  next()
+}, saveArticleAndRedirect('new'))
+
+router.put('/:id', async (req, res, next) => {
+  req.project = await Project.findById(req.params.id)
+  next()
+}, saveArticleAndRedirect('edit'))
+
+router.delete('/:id', async (req, res) => {
+  await Project.findByIdAndDelete(req.params.id)
+  res.redirect('/project')
+})
+
+function saveArticleAndRedirect(path) {
+  return async (req, res) => {
+    let project = req.project
+    project.title = req.body.title
+    project.author = req.body.author
+    project.description = req.body.description
+    project.markdown = req.body.markdown
+    try {
+      project = await project.save()
+      res.redirect(`/project/${project.slug}`)
+    } catch (e) {
+      res.render(`project/${path}`, { project: project })
+    }
+  }
+}
+
+module.exports = router

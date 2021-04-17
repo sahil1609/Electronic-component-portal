@@ -1,53 +1,51 @@
-const mongoose = require('mongoose')
-const marked = require('marked')
-const slugify = require('slugify')
-const createDomPurifier = require('dompurify')
-const { JSDOM } = require('jsdom')
-const dompurify = createDomPurifier(new JSDOM().window)
+const express = require('express')
+const Component = require('../models/component')
+const router = express.Router()
 
-//for the database
-const newsSchema = new mongoose.Schema({
-    title:{
-        type: String,
-        required: true
-    },
-    author:{
-        type: String,
-        required: true
-    },
-    description:{
-        type: String
-    },
-    markdown:{
-        type: String,
-        required: true
-    },
-    createdAt:{
-        type: Date,
-        default: Date.now
-    },
-    slug: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    sanitizedHtml: {
-        type: String,
-        required: true
-    }
-    
-})
-newsSchema.pre('validate', function(next) {
-    if (this.title) {
-        this.slug = slugify(this.title, { 
-            lower:true, strict:true 
-        })
-    }
-    if (this.markdown) {
-        this.sanitizedHtml = dompurify.sanitize(marked(this.markdown))
-    }
-    next()
+router.get('/new', (req, res) => {
+  res.render('component/new', { component: new Component() })
 })
 
-//News is the table
-module.exports= mongoose.model('Component', newsSchema)
+router.get('/edit/:id', async (req, res) => {
+  const component = await Component.findById(req.params.id)
+  res.render('component/edit', { component: component })
+})
+
+router.get('/:slug', async (req, res) => {
+  const component = await Component.findOne({ slug: req.params.slug })
+  if (component == null) res.redirect('/')
+  res.render('component/show', { component: component })
+})
+
+router.post('/', async (req, res, next) => {
+  req.component = new Component()
+  next()
+}, saveArticleAndRedirect('new'))
+
+router.put('/:id', async (req, res, next) => {
+  req.component = await Component.findById(req.params.id)
+  next()
+}, saveArticleAndRedirect('edit'))
+
+router.delete('/:id', async (req, res) => {
+  await Component.findByIdAndDelete(req.params.id)
+  res.redirect('/component')
+})
+
+function saveArticleAndRedirect(path) {
+  return async (req, res) => {
+    let component = req.component
+    component.title = req.body.title
+    component.author = req.body.author
+    component.description = req.body.description
+    component.markdown = req.body.markdown
+    try {
+      component = await component.save()
+      res.redirect(`/component/${component.slug}`)
+    } catch (e) {
+      res.render(`component/${path}`, { component: component })
+    }
+  }
+}
+
+module.exports = router
